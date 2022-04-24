@@ -1008,25 +1008,48 @@ macro_rules! impl_blis {
                 beta: Self,
                 num_threads: usize,
             ) {
-                let alpha = MatrixRef::new_1x1(&alpha);
-                let beta = MatrixRef::new_1x1(&beta);
+                let mut dst = dst;
+                if lhs.nrows() == 1 && rhs.nrows() != 1 {
+                    return Self::gemm(
+                        dst.rb_mut().trans(),
+                        rhs.trans(),
+                        lhs.trans(),
+                        alpha,
+                        beta,
+                        num_threads,
+                    );
+                }
+                let mat_alpha = MatrixRef::new_1x1(&alpha);
+                let mat_beta = MatrixRef::new_1x1(&beta);
 
                 matrix_to_obj!(obj_dst, dst, $ty);
                 matrix_to_obj!(obj_lhs, lhs, $ty);
                 matrix_to_obj!(obj_rhs, rhs, $ty);
-                matrix_to_obj!(obj_alpha, alpha, $ty);
-                matrix_to_obj!(obj_beta, beta, $ty);
+                matrix_to_obj!(obj_alpha, mat_alpha, $ty);
+                matrix_to_obj!(obj_beta, mat_beta, $ty);
 
                 unsafe {
-                    sys::bli_gemm_ex(
-                        obj_alpha,
-                        obj_lhs,
-                        obj_rhs,
-                        obj_beta,
-                        obj_dst,
-                        core::ptr::null(),
-                        &mut to_rntm(num_threads),
-                    );
+                    if rhs.ncols() == 1 {
+                        sys::bli_gemv_ex(
+                            obj_alpha,
+                            obj_lhs,
+                            obj_rhs,
+                            obj_beta,
+                            obj_dst,
+                            core::ptr::null(),
+                            &mut to_rntm(num_threads),
+                        );
+                    } else {
+                        sys::bli_gemm_ex(
+                            obj_alpha,
+                            obj_lhs,
+                            obj_rhs,
+                            obj_beta,
+                            obj_dst,
+                            core::ptr::null(),
+                            &mut to_rntm(num_threads),
+                        );
+                    }
                 }
             }
 
