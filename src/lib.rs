@@ -204,17 +204,66 @@ impl<'a, T> MatrixRef<'a, T> {
     ///
     /// Panics:  
     /// Panics if one of these conditions is not satisfied:
-    ///  - `i < self.nrows()`,
-    ///  - `j < self.ncols()`,
-    ///  - `nrows < self.nrows() - i`,
-    ///  - `ncols < self.ncols() - j`.
+    ///  - `i <= self.nrows()`,
+    ///  - `j <= self.ncols()`,
+    ///  - `nrows <= self.nrows() - i`,
+    ///  - `ncols <= self.ncols() - j`.
     pub fn submatrix(self, i: usize, j: usize, nrows: usize, ncols: usize) -> Self {
-        assert!(i < self.nrows());
-        assert!(j < self.ncols());
-        assert!(nrows < self.nrows() - i);
-        assert!(ncols < self.ncols() - j);
+        assert!(i <= self.nrows());
+        assert!(j <= self.ncols());
+        assert!(nrows <= self.nrows() - i);
+        assert!(ncols <= self.ncols() - j);
 
         unsafe { self.submatrix_unchecked(i, j, nrows, ncols) }
+    }
+
+    /// Returns the four disjoint submatrices in the following order:  
+    /// - starting at `(0, 0)` with `i` rows and `j` columns.
+    /// - starting at `(0, j)` with `i` rows and `self.ncols() - j` columns.
+    /// - starting at `(i, 0)` with `i` rows and `j` columns.
+    /// - starting at `(i, j)` with `self.nrows() - i` rows and `self.ncols() - j` columns.
+    ///
+    /// Panics:  
+    /// Panics if one of these conditions is not satisfied:
+    ///  - `i <= self.nrows()`,
+    ///  - `j <= self.ncols()`,
+    pub fn split_at(self, i: usize, j: usize) -> (Self, Self, Self, Self) {
+        assert!(i <= self.nrows());
+        assert!(j <= self.ncols());
+        unsafe { self.split_at_unchecked(i, j) }
+    }
+
+    /// Returns the four disjoint submatrices in the following order:  
+    /// - starting at `(0, 0)` with `i` rows and `j` columns.
+    /// - starting at `(0, j)` with `i` rows and `self.ncols() - j` columns.
+    /// - starting at `(i, 0)` with `i` rows and `j` columns.
+    /// - starting at `(i, j)` with `self.nrows() - i` rows and `self.ncols() - j` columns.
+    ///
+    /// Safety:  
+    /// The behavior is undefined if one of these conditions is not satisfied:
+    ///  - `i <= self.nrows()`,
+    ///  - `j <= self.ncols()`,
+    pub unsafe fn split_at_unchecked(self, i: usize, j: usize) -> (Self, Self, Self, Self) {
+        debug_assert!(i <= self.nrows());
+        debug_assert!(j <= self.ncols());
+
+        let m = self.inner.nrows;
+        let n = self.inner.ncols;
+
+        let rs = self.inner.rs;
+        let cs = self.inner.cs;
+
+        let ptr_top_l = self.inner.buf.wrapping_offset(offset(0, 0, rs, cs));
+        let ptr_top_r = self.inner.buf.wrapping_offset(offset(0, j, rs, cs));
+        let ptr_bot_l = self.inner.buf.wrapping_offset(offset(i, 0, rs, cs));
+        let ptr_bot_r = self.inner.buf.wrapping_offset(offset(i, j, rs, cs));
+
+        (
+            Self::from_raw_parts(ptr_top_l, i, j, rs, cs),
+            Self::from_raw_parts(ptr_top_r, i, n - j, rs, cs),
+            Self::from_raw_parts(ptr_bot_l, m - i, j, rs, cs),
+            Self::from_raw_parts(ptr_bot_r, m - i, n - j, rs, cs),
+        )
     }
 
     /// Returns the submatrix starting at `(i, j)`, with `nrows` rows and `ncols` columns,
@@ -222,10 +271,10 @@ impl<'a, T> MatrixRef<'a, T> {
     ///
     /// Safety:  
     /// The behavior is undefined if one of these conditions is not satisfied:
-    ///  - `i < self.nrows()`,
-    ///  - `j < self.ncols()`,
-    ///  - `nrows < self.nrows() - i`,
-    ///  - `ncols < self.ncols() - j`.
+    ///  - `i <= self.nrows()`,
+    ///  - `j <= self.ncols()`,
+    ///  - `nrows <= self.nrows() - i`,
+    ///  - `ncols <= self.ncols() - j`.
     pub unsafe fn submatrix_unchecked(
         self,
         i: usize,
@@ -233,10 +282,10 @@ impl<'a, T> MatrixRef<'a, T> {
         nrows: usize,
         ncols: usize,
     ) -> Self {
-        debug_assert!(i < self.nrows());
-        debug_assert!(j < self.ncols());
-        debug_assert!(nrows < self.nrows() - i);
-        debug_assert!(ncols < self.ncols() - j);
+        debug_assert!(i <= self.nrows());
+        debug_assert!(j <= self.ncols());
+        debug_assert!(nrows <= self.nrows() - i);
+        debug_assert!(ncols <= self.ncols() - j);
 
         Self::from_raw_parts(
             self.element_ptr(i, j),
@@ -473,17 +522,66 @@ impl<'a, T> MatrixMut<'a, T> {
     ///
     /// Panics:  
     /// Panics if one of these conditions is not satisfied:
-    ///  - `i < self.nrows()`,
-    ///  - `j < self.ncols()`,
-    ///  - `nrows < self.nrows() - i`,
-    ///  - `ncols < self.ncols() - j`.
+    ///  - `i <= self.nrows()`,
+    ///  - `j <= self.ncols()`,
+    ///  - `nrows <= self.nrows() - i`,
+    ///  - `ncols <= self.ncols() - j`.
     pub fn submatrix(self, i: usize, j: usize, nrows: usize, ncols: usize) -> Self {
-        assert!(i < self.nrows());
-        assert!(j < self.ncols());
-        assert!(nrows < self.nrows() - i);
-        assert!(ncols < self.ncols() - j);
+        assert!(i <= self.nrows());
+        assert!(j <= self.ncols());
+        assert!(nrows <= self.nrows() - i);
+        assert!(ncols <= self.ncols() - j);
 
         unsafe { self.submatrix_unchecked(i, j, nrows, ncols) }
+    }
+
+    /// Returns the four disjoint submatrices in the following order:  
+    /// - starting at `(0, 0)` with `i` rows and `j` columns.
+    /// - starting at `(0, j)` with `i` rows and `self.ncols() - j` columns.
+    /// - starting at `(i, 0)` with `i` rows and `j` columns.
+    /// - starting at `(i, j)` with `self.nrows() - i` rows and `self.ncols() - j` columns.
+    ///
+    /// Panics:  
+    /// Panics if one of these conditions is not satisfied:
+    ///  - `i <= self.nrows()`,
+    ///  - `j <= self.ncols()`,
+    pub fn split_at(self, i: usize, j: usize) -> (Self, Self, Self, Self) {
+        assert!(i <= self.nrows());
+        assert!(j <= self.ncols());
+        unsafe { self.split_at_unchecked(i, j) }
+    }
+
+    /// Returns the four disjoint submatrices in the following order:  
+    /// - starting at `(0, 0)` with `i` rows and `j` columns.
+    /// - starting at `(0, j)` with `i` rows and `self.ncols() - j` columns.
+    /// - starting at `(i, 0)` with `i` rows and `j` columns.
+    /// - starting at `(i, j)` with `self.nrows() - i` rows and `self.ncols() - j` columns.
+    ///
+    /// Safety:  
+    /// The behavior is undefined if one of these conditions is not satisfied:
+    ///  - `i <= self.nrows()`,
+    ///  - `j <= self.ncols()`,
+    pub unsafe fn split_at_unchecked(self, i: usize, j: usize) -> (Self, Self, Self, Self) {
+        debug_assert!(i <= self.nrows());
+        debug_assert!(j <= self.ncols());
+
+        let m = self.inner.nrows;
+        let n = self.inner.ncols;
+
+        let rs = self.inner.rs;
+        let cs = self.inner.cs;
+
+        let ptr_top_l = self.inner.buf.wrapping_offset(offset(0, 0, rs, cs)) as *mut T;
+        let ptr_top_r = self.inner.buf.wrapping_offset(offset(0, j, rs, cs)) as *mut T;
+        let ptr_bot_l = self.inner.buf.wrapping_offset(offset(i, 0, rs, cs)) as *mut T;
+        let ptr_bot_r = self.inner.buf.wrapping_offset(offset(i, j, rs, cs)) as *mut T;
+
+        (
+            Self::from_raw_parts_mut(ptr_top_l, i, j, rs, cs),
+            Self::from_raw_parts_mut(ptr_top_r, i, n - j, rs, cs),
+            Self::from_raw_parts_mut(ptr_bot_l, m - i, j, rs, cs),
+            Self::from_raw_parts_mut(ptr_bot_r, m - i, n - j, rs, cs),
+        )
     }
 
     /// Returns the submatrix starting at `(i, j)`, with `nrows` rows and `ncols` columns,
@@ -491,10 +589,10 @@ impl<'a, T> MatrixMut<'a, T> {
     ///
     /// Safety:  
     /// The behavior is undefined if one of these conditions is not satisfied:
-    ///  - `i < self.nrows()`,
-    ///  - `j < self.ncols()`,
-    ///  - `nrows < self.nrows() - i`,
-    ///  - `ncols < self.ncols() - j`.
+    ///  - `i <= self.nrows()`,
+    ///  - `j <= self.ncols()`,
+    ///  - `nrows <= self.nrows() - i`,
+    ///  - `ncols <= self.ncols() - j`.
     pub unsafe fn submatrix_unchecked(
         self,
         i: usize,
@@ -502,10 +600,10 @@ impl<'a, T> MatrixMut<'a, T> {
         nrows: usize,
         ncols: usize,
     ) -> Self {
-        debug_assert!(i < self.nrows());
-        debug_assert!(j < self.ncols());
-        debug_assert!(nrows < self.nrows() - i);
-        debug_assert!(ncols < self.ncols() - j);
+        debug_assert!(i <= self.nrows());
+        debug_assert!(j <= self.ncols());
+        debug_assert!(nrows <= self.nrows() - i);
+        debug_assert!(ncols <= self.ncols() - j);
 
         let rs = self.row_stride();
         let cs = self.col_stride();
