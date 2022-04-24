@@ -517,9 +517,105 @@ pub trait Blis: Sized {
         num_threads: usize,
     );
 
-    // TODO
-    // trmm
-    // trsm
+    /// Performs an in-place triangular matrix product operation.
+    ///
+    /// Let `actual_lhs` be the lower triangular part of `lhs`.  
+    /// Performs the operation
+    /// `dst := alpha * actual_lhs * dst`.
+    fn trmm_left<'a>(
+        dst: MatrixMut<'a, Self>,
+        lhs: MatrixRef<'a, Self>,
+        alpha: Self,
+        num_threads: usize,
+    );
+
+    /// Performs an in-place triangular matrix product operation.
+    ///
+    /// Let `actual_rhs` be the lower triangular part of `rhs`.  
+    /// Performs the operation  
+    /// `dst := alpha * dst * actual_rhs`.  
+    fn trmm_right<'a>(
+        dst: MatrixMut<'a, Self>,
+        rhs: MatrixRef<'a, Self>,
+        alpha: Self,
+        num_threads: usize,
+    );
+
+    /// Performs an in-place triangular matrix product operation, with unit diagonal.
+    ///
+    /// Let `actual_lhs` be the lower triangular part of `lhs`, with an implicit unit diagonal.  
+    /// Performs the operation
+    /// `dst := alpha * actual_lhs * dst`.
+    fn trmm_left_unit_diag<'a>(
+        dst: MatrixMut<'a, Self>,
+        lhs: MatrixRef<'a, Self>,
+        alpha: Self,
+        num_threads: usize,
+    );
+
+    /// Performs an in-place triangular matrix product operation, with unit diagonal.
+    ///
+    /// Let `actual_rhs` be the lower triangular part of `rhs`, with an implicit unit diagonal.  
+    /// Performs the operation  
+    /// `dst := alpha * dst * actual_rhs`.  
+    fn trmm_right_unit_diag<'a>(
+        dst: MatrixMut<'a, Self>,
+        rhs: MatrixRef<'a, Self>,
+        alpha: Self,
+        num_threads: usize,
+    );
+
+    /// Solves a triangular system in-place.
+    ///
+    /// Let `actual_lhs` be the lower triangular part of `lhs`.  
+    /// Solves the equation
+    /// `actual_lhs * X := alpha * dst`,  
+    /// and stores the result in `dst`.
+    fn trsm_left<'a>(
+        dst: MatrixMut<'a, Self>,
+        lhs: MatrixRef<'a, Self>,
+        alpha: Self,
+        num_threads: usize,
+    );
+
+    /// Solves a triangular system in-place.
+    ///
+    /// Let `actual_rhs` be the lower triangular part of `rhs`.  
+    /// Solves the equation
+    /// `X * actual_rhs := alpha * dst`,  
+    /// and stores the result in `dst`.
+    fn trsm_right<'a>(
+        dst: MatrixMut<'a, Self>,
+        rhs: MatrixRef<'a, Self>,
+        alpha: Self,
+        num_threads: usize,
+    );
+
+    /// Solves a triangular system in-place, with unit diagonal.
+    ///
+    /// Let `actual_lhs` be the lower triangular part of `lhs`, with an implicit unit diagonal.  
+    /// Solves the equation
+    /// `actual_lhs * X := alpha * dst`,  
+    /// and stores the result in `dst`.
+    fn trsm_left_unit_diag<'a>(
+        dst: MatrixMut<'a, Self>,
+        lhs: MatrixRef<'a, Self>,
+        alpha: Self,
+        num_threads: usize,
+    );
+
+    /// Solves a triangular system in-place, with unit diagonal.
+    ///
+    /// Let `actual_rhs` be the lower triangular part of `rhs`, with an implicit unit diagonal.  
+    /// Solves the equation
+    /// `X * actual_rhs := alpha * dst`,  
+    /// and stores the result in `dst`.
+    fn trsm_right_unit_diag<'a>(
+        dst: MatrixMut<'a, Self>,
+        rhs: MatrixRef<'a, Self>,
+        alpha: Self,
+        num_threads: usize,
+    );
 }
 
 macro_rules! impl_blis {
@@ -730,6 +826,230 @@ macro_rules! impl_blis {
                     );
                 }
             }
+
+            fn trmm_left<'a>(
+                dst: MatrixMut<'a, Self>,
+                lhs: MatrixRef<'a, Self>,
+                alpha: Self,
+                num_threads: usize,
+            ) {
+                let alpha = MatrixRef::new_1x1(&alpha);
+
+                matrix_to_obj!(obj_dst, dst, $ty);
+                matrix_to_obj!(obj_lhs, lhs, $ty);
+                matrix_to_obj!(obj_alpha, alpha, $ty);
+
+                set_uplo!(obj_lhs, sys::uplo_t_BLIS_LOWER);
+                set_diag!(obj_lhs, sys::diag_t_BLIS_NONUNIT_DIAG);
+                set_struc!(obj_lhs, sys::struc_t_BLIS_TRIANGULAR);
+
+                unsafe {
+                    sys::bli_trmm_ex(
+                        sys::side_t_BLIS_LEFT,
+                        obj_alpha,
+                        obj_lhs,
+                        obj_dst,
+                        core::ptr::null(),
+                        &mut to_rntm(num_threads),
+                    );
+                }
+            }
+
+            fn trmm_right<'a>(
+                dst: MatrixMut<'a, Self>,
+                rhs: MatrixRef<'a, Self>,
+                alpha: Self,
+                num_threads: usize,
+            ) {
+                let alpha = MatrixRef::new_1x1(&alpha);
+
+                matrix_to_obj!(obj_dst, dst, $ty);
+                matrix_to_obj!(obj_rhs, rhs, $ty);
+                matrix_to_obj!(obj_alpha, alpha, $ty);
+
+                set_uplo!(obj_rhs, sys::uplo_t_BLIS_LOWER);
+                set_diag!(obj_rhs, sys::diag_t_BLIS_NONUNIT_DIAG);
+                set_struc!(obj_rhs, sys::struc_t_BLIS_TRIANGULAR);
+
+                unsafe {
+                    sys::bli_trmm_ex(
+                        sys::side_t_BLIS_RIGHT,
+                        obj_alpha,
+                        obj_rhs,
+                        obj_dst,
+                        core::ptr::null(),
+                        &mut to_rntm(num_threads),
+                    );
+                }
+            }
+
+            fn trmm_left_unit_diag<'a>(
+                dst: MatrixMut<'a, Self>,
+                lhs: MatrixRef<'a, Self>,
+                alpha: Self,
+                num_threads: usize,
+            ) {
+                let alpha = MatrixRef::new_1x1(&alpha);
+
+                matrix_to_obj!(obj_dst, dst, $ty);
+                matrix_to_obj!(obj_lhs, lhs, $ty);
+                matrix_to_obj!(obj_alpha, alpha, $ty);
+
+                set_uplo!(obj_lhs, sys::uplo_t_BLIS_LOWER);
+                set_diag!(obj_lhs, sys::diag_t_BLIS_UNIT_DIAG);
+                set_struc!(obj_lhs, sys::struc_t_BLIS_TRIANGULAR);
+
+                unsafe {
+                    sys::bli_trmm_ex(
+                        sys::side_t_BLIS_LEFT,
+                        obj_alpha,
+                        obj_lhs,
+                        obj_dst,
+                        core::ptr::null(),
+                        &mut to_rntm(num_threads),
+                    );
+                }
+            }
+
+            fn trmm_right_unit_diag<'a>(
+                dst: MatrixMut<'a, Self>,
+                rhs: MatrixRef<'a, Self>,
+                alpha: Self,
+                num_threads: usize,
+            ) {
+                let alpha = MatrixRef::new_1x1(&alpha);
+
+                matrix_to_obj!(obj_dst, dst, $ty);
+                matrix_to_obj!(obj_rhs, rhs, $ty);
+                matrix_to_obj!(obj_alpha, alpha, $ty);
+
+                set_uplo!(obj_rhs, sys::uplo_t_BLIS_LOWER);
+                set_diag!(obj_rhs, sys::diag_t_BLIS_UNIT_DIAG);
+                set_struc!(obj_rhs, sys::struc_t_BLIS_TRIANGULAR);
+
+                unsafe {
+                    sys::bli_trmm_ex(
+                        sys::side_t_BLIS_RIGHT,
+                        obj_alpha,
+                        obj_rhs,
+                        obj_dst,
+                        core::ptr::null(),
+                        &mut to_rntm(num_threads),
+                    );
+                }
+            }
+
+            fn trsm_left<'a>(
+                dst: MatrixMut<'a, Self>,
+                lhs: MatrixRef<'a, Self>,
+                alpha: Self,
+                num_threads: usize,
+            ) {
+                let alpha = MatrixRef::new_1x1(&alpha);
+
+                matrix_to_obj!(obj_dst, dst, $ty);
+                matrix_to_obj!(obj_lhs, lhs, $ty);
+                matrix_to_obj!(obj_alpha, alpha, $ty);
+
+                set_uplo!(obj_lhs, sys::uplo_t_BLIS_LOWER);
+                set_diag!(obj_lhs, sys::diag_t_BLIS_NONUNIT_DIAG);
+                set_struc!(obj_lhs, sys::struc_t_BLIS_TRIANGULAR);
+
+                unsafe {
+                    sys::bli_trsm_ex(
+                        sys::side_t_BLIS_LEFT,
+                        obj_alpha,
+                        obj_lhs,
+                        obj_dst,
+                        core::ptr::null(),
+                        &mut to_rntm(num_threads),
+                    );
+                }
+            }
+
+            fn trsm_right<'a>(
+                dst: MatrixMut<'a, Self>,
+                rhs: MatrixRef<'a, Self>,
+                alpha: Self,
+                num_threads: usize,
+            ) {
+                let alpha = MatrixRef::new_1x1(&alpha);
+
+                matrix_to_obj!(obj_dst, dst, $ty);
+                matrix_to_obj!(obj_rhs, rhs, $ty);
+                matrix_to_obj!(obj_alpha, alpha, $ty);
+
+                set_uplo!(obj_rhs, sys::uplo_t_BLIS_LOWER);
+                set_diag!(obj_rhs, sys::diag_t_BLIS_NONUNIT_DIAG);
+                set_struc!(obj_rhs, sys::struc_t_BLIS_TRIANGULAR);
+
+                unsafe {
+                    sys::bli_trsm_ex(
+                        sys::side_t_BLIS_RIGHT,
+                        obj_alpha,
+                        obj_rhs,
+                        obj_dst,
+                        core::ptr::null(),
+                        &mut to_rntm(num_threads),
+                    );
+                }
+            }
+
+            fn trsm_left_unit_diag<'a>(
+                dst: MatrixMut<'a, Self>,
+                lhs: MatrixRef<'a, Self>,
+                alpha: Self,
+                num_threads: usize,
+            ) {
+                let alpha = MatrixRef::new_1x1(&alpha);
+
+                matrix_to_obj!(obj_dst, dst, $ty);
+                matrix_to_obj!(obj_lhs, lhs, $ty);
+                matrix_to_obj!(obj_alpha, alpha, $ty);
+
+                set_uplo!(obj_lhs, sys::uplo_t_BLIS_LOWER);
+                set_diag!(obj_lhs, sys::diag_t_BLIS_UNIT_DIAG);
+                set_struc!(obj_lhs, sys::struc_t_BLIS_TRIANGULAR);
+
+                unsafe {
+                    sys::bli_trsm_ex(
+                        sys::side_t_BLIS_LEFT,
+                        obj_alpha,
+                        obj_lhs,
+                        obj_dst,
+                        core::ptr::null(),
+                        &mut to_rntm(num_threads),
+                    );
+                }
+            }
+
+            fn trsm_right_unit_diag<'a>(
+                dst: MatrixMut<'a, Self>,
+                rhs: MatrixRef<'a, Self>,
+                alpha: Self,
+                num_threads: usize,
+            ) {
+                let alpha = MatrixRef::new_1x1(&alpha);
+
+                matrix_to_obj!(obj_dst, dst, $ty);
+                matrix_to_obj!(obj_rhs, rhs, $ty);
+                matrix_to_obj!(obj_alpha, alpha, $ty);
+
+                set_uplo!(obj_rhs, sys::uplo_t_BLIS_LOWER);
+                set_diag!(obj_rhs, sys::diag_t_BLIS_UNIT_DIAG);
+                set_struc!(obj_rhs, sys::struc_t_BLIS_TRIANGULAR);
+
+                unsafe {
+                    sys::bli_trsm_ex(
+                        sys::side_t_BLIS_RIGHT,
+                        obj_alpha,
+                        obj_rhs,
+                        obj_dst,
+                        core::ptr::null(),
+                        &mut to_rntm(num_threads),
+                    );
+                }
+            }
         }
     };
 }
@@ -846,6 +1166,7 @@ mod tests {
             }
         };
     }
+
     impl_gemm_test!(gemm_f32, f32);
     impl_gemm_test!(gemm_f64, f64);
 
@@ -1021,7 +1342,131 @@ mod tests {
     impl_trmm3_right_unit_diag_test!(trmm3ru_f32, f32);
     impl_trmm3_right_unit_diag_test!(trmm3ru_f64, f64);
 
+    macro_rules! impl_trmm_left_test {
+        ($name: ident, $ty: ty) => {
+            #[test]
+            fn $name() {
+                let alpha = 0.5;
+
+                let a = [1.0, 2.0, 3.0, 4.0];
+                let c = [10.0, 20.0, 30.0, 40.0];
+                let mut c0 = c;
+
+                {
+                    let a = MatrixRef::try_from_slice(&a, 2, 2, 1, 2).unwrap();
+                    let c0 = MatrixMut::try_from_mut_slice(&mut c0, 2, 2, 1, 2).unwrap();
+
+                    <$ty>::trmm_left(c0, a, alpha, 1);
+                }
+                assert_eq!(
+                    c0,
+                    [
+                        alpha * (a[0] * c[0]),
+                        alpha * (a[1] * c[0] + a[3] * c[1]),
+                        alpha * (a[0] * c[2]),
+                        alpha * (a[1] * c[2] + a[3] * c[3]),
+                    ]
+                );
+            }
+        };
+    }
+
+    macro_rules! impl_trmm_left_unit_diag_test {
+        ($name: ident, $ty: ty) => {
+            #[test]
+            fn $name() {
+                let alpha = 0.5;
+
+                let a = [1.0, 2.0, 3.0, 4.0];
+                let c = [10.0, 20.0, 30.0, 40.0];
+                let mut c0 = c;
+
+                {
+                    let a = MatrixRef::try_from_slice(&a, 2, 2, 1, 2).unwrap();
+                    let c0 = MatrixMut::try_from_mut_slice(&mut c0, 2, 2, 1, 2).unwrap();
+
+                    <$ty>::trmm_left_unit_diag(c0, a, alpha, 1);
+                }
+                assert_eq!(
+                    c0,
+                    [
+                        alpha * (1.0 * c[0]),
+                        alpha * (a[1] * c[0] + 1.0 * c[1]),
+                        alpha * (1.0 * c[2]),
+                        alpha * (a[1] * c[2] + 1.0 * c[3]),
+                    ]
+                );
+            }
+        };
+    }
+
+    macro_rules! impl_trmm_right_test {
+        ($name: ident, $ty: ty) => {
+            #[test]
+            fn $name() {
+                let alpha = 0.5;
+
+                let b = [5.0, 6.0, 7.0, 8.0];
+                let c = [10.0, 20.0, 30.0, 40.0];
+                let mut c0 = c;
+
+                {
+                    let b = MatrixRef::try_from_slice(&b, 2, 2, 1, 2).unwrap();
+                    let c0 = MatrixMut::try_from_mut_slice(&mut c0, 2, 2, 1, 2).unwrap();
+
+                    <$ty>::trmm_right(c0, b, alpha, 1);
+                }
+                assert_eq!(
+                    c0,
+                    [
+                        alpha * (c[0] * b[0] + c[2] * b[1]),
+                        alpha * (c[1] * b[0] + c[3] * b[1]),
+                        alpha * (c[2] * b[3]),
+                        alpha * (c[3] * b[3]),
+                    ]
+                );
+            }
+        };
+    }
+
+    macro_rules! impl_trmm_right_unit_diag_test {
+        ($name: ident, $ty: ty) => {
+            #[test]
+            fn $name() {
+                let alpha = 0.5;
+
+                let b = [5.0, 6.0, 7.0, 8.0];
+                let c = [10.0, 20.0, 30.0, 40.0];
+                let mut c0 = c;
+
+                {
+                    let b = MatrixRef::try_from_slice(&b, 2, 2, 1, 2).unwrap();
+                    let c0 = MatrixMut::try_from_mut_slice(&mut c0, 2, 2, 1, 2).unwrap();
+
+                    <$ty>::trmm_right_unit_diag(c0, b, alpha, 1);
+                }
+                assert_eq!(
+                    c0,
+                    [
+                        alpha * (c[0] * 1.0 + c[2] * b[1]),
+                        alpha * (c[1] * 1.0 + c[3] * b[1]),
+                        alpha * (c[2] * 1.0),
+                        alpha * (c[3] * 1.0),
+                    ]
+                );
+            }
+        };
+    }
+
+    impl_trmm_left_test!(trmml_f32, f32);
+    impl_trmm_left_test!(trmml_f64, f64);
+    impl_trmm_left_unit_diag_test!(trmmlu_f32, f32);
+    impl_trmm_left_unit_diag_test!(trmmlu_f64, f64);
+    impl_trmm_right_test!(trmmr_f32, f32);
+    impl_trmm_right_test!(trmmr_f64, f64);
+    impl_trmm_right_unit_diag_test!(trmmru_f32, f32);
+    impl_trmm_right_unit_diag_test!(trmmru_f64, f64);
+
     // TODO
-    // trmm tests
     // trsm tests
 }
