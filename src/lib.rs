@@ -884,8 +884,144 @@ mod tests {
     impl_gemmt_test!(gemmt_f32, f32);
     impl_gemmt_test!(gemmt_f64, f64);
 
+    macro_rules! impl_trmm3_left_test {
+        ($name: ident, $ty: ty) => {
+            #[test]
+            fn $name() {
+                let alpha = 0.5;
+                let beta = 2.0;
+
+                let a = [1.0, 2.0, 3.0, 4.0];
+                let b = [5.0, 6.0, 7.0, 8.0];
+                let c = [10.0, 20.0, 30.0, 40.0];
+                let mut c0 = c;
+
+                {
+                    let a = MatrixRef::try_from_slice(&a, 2, 2, 1, 2).unwrap();
+                    let b = MatrixRef::try_from_slice(&b, 2, 2, 1, 2).unwrap();
+                    let c0 = MatrixMut::try_from_mut_slice(&mut c0, 2, 2, 1, 2).unwrap();
+
+                    <$ty>::trmm3_left(c0, a, b, alpha, beta, 1);
+                }
+                assert_eq!(
+                    c0,
+                    [
+                        beta * c[0] + alpha * (a[0] * b[0]),
+                        beta * c[1] + alpha * (a[1] * b[0] + a[3] * b[1]),
+                        beta * c[2] + alpha * (a[0] * b[2]),
+                        beta * c[3] + alpha * (a[1] * b[2] + a[3] * b[3]),
+                    ]
+                );
+            }
+        };
+    }
+
+    macro_rules! impl_trmm3_left_unit_diag_test {
+        ($name: ident, $ty: ty) => {
+            #[test]
+            fn $name() {
+                let alpha = 0.5;
+                let beta = 2.0;
+
+                let a = [1.0, 2.0, 3.0, 4.0];
+                let b = [5.0, 6.0, 7.0, 8.0];
+                let c = [10.0, 20.0, 30.0, 40.0];
+                let mut c0 = c;
+
+                {
+                    let a = MatrixRef::try_from_slice(&a, 2, 2, 1, 2).unwrap();
+                    let b = MatrixRef::try_from_slice(&b, 2, 2, 1, 2).unwrap();
+                    let c0 = MatrixMut::try_from_mut_slice(&mut c0, 2, 2, 1, 2).unwrap();
+
+                    <$ty>::trmm3_left_unit_diag(c0, a, b, alpha, beta, 1);
+                }
+                assert_eq!(
+                    c0,
+                    [
+                        beta * c[0] + alpha * (1.0 * b[0]),
+                        beta * c[1] + alpha * (a[1] * b[0] + 1.0 * b[1]),
+                        beta * c[2] + alpha * (1.0 * b[2]),
+                        beta * c[3] + alpha * (a[1] * b[2] + 1.0 * b[3]),
+                    ]
+                );
+            }
+        };
+    }
+
+    macro_rules! impl_trmm3_right_test {
+        ($name: ident, $ty: ty) => {
+            #[test]
+            fn $name() {
+                let alpha = 0.5;
+                let beta = 2.0;
+
+                let a = [1.0, 2.0, 3.0, 4.0];
+                let b = [5.0, 6.0, 7.0, 8.0];
+                let c = [10.0, 20.0, 30.0, 40.0];
+                let mut c0 = c;
+
+                {
+                    let a = MatrixRef::try_from_slice(&a, 2, 2, 1, 2).unwrap();
+                    let b = MatrixRef::try_from_slice(&b, 2, 2, 1, 2).unwrap();
+                    let c0 = MatrixMut::try_from_mut_slice(&mut c0, 2, 2, 1, 2).unwrap();
+
+                    <$ty>::trmm3_right(c0, a, b, alpha, beta, 1);
+                }
+                assert_eq!(
+                    c0,
+                    [
+                        beta * c[0] + alpha * (a[0] * b[0] + a[2] * b[1]),
+                        beta * c[1] + alpha * (a[1] * b[0] + a[3] * b[1]),
+                        beta * c[2] + alpha * (a[2] * b[3]),
+                        beta * c[3] + alpha * (a[3] * b[3]),
+                    ]
+                );
+            }
+        };
+    }
+
+    macro_rules! impl_trmm3_right_unit_diag_test {
+        ($name: ident, $ty: ty) => {
+            #[test]
+            fn $name() {
+                let alpha = 0.5;
+                let beta = 2.0;
+
+                let a = [1.0, 2.0, 3.0, 4.0];
+                let b = [5.0, 6.0, 7.0, 8.0];
+                let c = [10.0, 20.0, 30.0, 40.0];
+                let mut c0 = c;
+
+                {
+                    let a = MatrixRef::try_from_slice(&a, 2, 2, 1, 2).unwrap();
+                    let b = MatrixRef::try_from_slice(&b, 2, 2, 1, 2).unwrap();
+                    let c0 = MatrixMut::try_from_mut_slice(&mut c0, 2, 2, 1, 2).unwrap();
+
+                    <$ty>::trmm3_right_unit_diag(c0, a, b, alpha, beta, 1);
+                }
+                assert_eq!(
+                    c0,
+                    [
+                        beta * c[0] + alpha * (a[0] * 1.0 + a[2] * b[1]),
+                        beta * c[1] + alpha * (a[1] * 1.0 + a[3] * b[1]),
+                        beta * c[2] + alpha * (a[2] * 1.0),
+                        beta * c[3] + alpha * (a[3] * 1.0),
+                    ]
+                );
+            }
+        };
+    }
+
+    impl_trmm3_left_test!(trmm3l_f32, f32);
+    impl_trmm3_left_test!(trmm3l_f64, f64);
+    impl_trmm3_left_unit_diag_test!(trmm3lu_f32, f32);
+    impl_trmm3_left_unit_diag_test!(trmm3lu_f64, f64);
+    impl_trmm3_right_test!(trmm3r_f32, f32);
+    impl_trmm3_right_test!(trmm3r_f64, f64);
+    impl_trmm3_right_unit_diag_test!(trmm3ru_f32, f32);
+    impl_trmm3_right_unit_diag_test!(trmm3ru_f64, f64);
+
     // TODO
-    // trmm3 tests
     // trmm tests
     // trsm tests
 }
