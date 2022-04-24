@@ -3,10 +3,10 @@ pub use reborrow::Reborrow;
 pub use reborrow::ReborrowMut;
 
 use core::marker::PhantomData;
-use core::ptr::NonNull;
+use core::ops::{Index, IndexMut};
 
 struct Inner<T> {
-    buf: NonNull<T>,
+    buf: *const T,
     nrows: usize,
     ncols: usize,
     rs: isize,
@@ -63,11 +63,73 @@ impl<'a, 'b, T> ReborrowMut<'b> for MatrixMut<'a, T> {
     }
 }
 
+impl<'a, T> Index<(usize, usize)> for MatrixRef<'a, T> {
+    type Output = T;
+    fn index<'s>(&'s self, (i, j): (usize, usize)) -> &'s Self::Output {
+        self.get(i, j)
+    }
+}
+impl<'a, T> Index<(usize, usize)> for MatrixMut<'a, T> {
+    type Output = T;
+    fn index<'s>(&'s self, (i, j): (usize, usize)) -> &'s Self::Output {
+        self.rb().get(i, j)
+    }
+}
+impl<'a, T> IndexMut<(usize, usize)> for MatrixMut<'a, T> {
+    fn index_mut<'s>(&'s mut self, (i, j): (usize, usize)) -> &'s mut Self::Output {
+        self.rb_mut().get_mut(i, j)
+    }
+}
+
+#[inline]
+fn offset(i: usize, j: usize, row_stride: isize, col_stride: isize) -> isize {
+    ((i as isize).wrapping_mul(row_stride)).wrapping_add((j as isize).wrapping_mul(col_stride))
+}
+#[inline]
+fn offset_inbounds(i: usize, j: usize, row_stride: isize, col_stride: isize) -> isize {
+    // TODO
+    // switch to unchecked_{mul, add} if they're stabilized
+    ((i as isize).wrapping_mul(row_stride)).wrapping_add((j as isize).wrapping_mul(col_stride))
+}
+
 impl<'a, T> MatrixRef<'a, T> {
+    /// Returns a view from a mutable slice, the matrix dimensions and its strides.
+    pub fn try_from_slice(
+        buf: &'a [T],
+        nrows: usize,
+        ncols: usize,
+        row_stride: usize,
+        col_stride: usize,
+    ) -> Result<Self, DimsErrorMut> {
+        let rs = row_stride;
+        let cs = col_stride;
+        unsafe {
+            if nrows == 0 || ncols == 0 {
+                Ok(Self::from_raw_parts(buf.as_ptr(), nrows, ncols, 0, 0))
+            } else {
+                let offset = largest_offset(nrows, ncols, rs, cs)?;
+                if offset == usize::MAX {
+                    return Err(DimsError::SizeOverflow.into());
+                }
+                if offset >= buf.len() {
+                    return Err(DimsError::BufferTooSmall(offset + 1).into());
+                }
+
+                Ok(Self::from_raw_parts(
+                    buf.as_ptr(),
+                    nrows,
+                    ncols,
+                    rs as isize,
+                    cs as isize,
+                ))
+            }
+        }
+    }
+
     /// Returns a view from a pointer to the first element,
     /// the matrix dimensions and its strides.
     pub unsafe fn from_raw_parts(
-        buf: NonNull<T>,
+        buf: *const T,
         nrows: usize,
         ncols: usize,
         row_stride: isize,
@@ -87,12 +149,12 @@ impl<'a, T> MatrixRef<'a, T> {
 
     /// Returns a view with 0 rows.
     pub fn new_0xn(ncols: usize) -> Self {
-        unsafe { Self::from_raw_parts(NonNull::<T>::dangling(), 0, ncols, 0, 0) }
+        unsafe { Self::from_raw_parts(core::ptr::null(), 0, ncols, 0, 0) }
     }
 
     /// Returns a view with 0 columns.
     pub fn new_mx0(nrows: usize) -> Self {
-        unsafe { Self::from_raw_parts(NonNull::<T>::dangling(), nrows, 0, 0, 0) }
+        unsafe { Self::from_raw_parts(core::ptr::null(), nrows, 0, 0, 0) }
     }
 
     /// Returns a view with 0 rows and 0 columns.
@@ -102,47 +164,7 @@ impl<'a, T> MatrixRef<'a, T> {
 
     /// Returns a view that refers to a single element.
     pub fn new_1x1(value: &'a T) -> Self {
-        let value = value as *const T as *mut T;
-        unsafe { Self::from_raw_parts(NonNull::<T>::new_unchecked(value), 1, 1, 0, 0) }
-    }
-
-    /// Returns a view from a mutable slice, the matrix dimensions and its strides.
-    pub fn try_from_slice(
-        buf: &'a [T],
-        nrows: usize,
-        ncols: usize,
-        row_stride: usize,
-        col_stride: usize,
-    ) -> Result<Self, DimsErrorMut> {
-        let rs = row_stride;
-        let cs = col_stride;
-        unsafe {
-            if nrows == 0 || ncols == 0 {
-                Ok(Self::from_raw_parts(
-                    NonNull::new_unchecked(buf.as_ptr() as *mut _),
-                    nrows,
-                    ncols,
-                    0,
-                    0,
-                ))
-            } else {
-                let offset = largest_offset(nrows, ncols, rs, cs)?;
-                if offset == usize::MAX {
-                    return Err(DimsError::SizeOverflow.into());
-                }
-                if offset >= buf.len() {
-                    return Err(DimsError::BufferTooSmall(offset + 1).into());
-                }
-
-                Ok(Self::from_raw_parts(
-                    NonNull::new_unchecked(buf.as_ptr() as *mut _),
-                    nrows,
-                    ncols,
-                    rs as isize,
-                    cs as isize,
-                ))
-            }
-        }
+        unsafe { Self::from_raw_parts(value, 1, 1, 0, 0) }
     }
 
     /// Returns a view over the transpose of `self`.
@@ -177,50 +199,111 @@ impl<'a, T> MatrixRef<'a, T> {
     pub fn col_stride(&self) -> isize {
         self.inner.cs
     }
+
+    /// Returns the submatrix starting at `(i, j)`, with `nrows` rows and `ncols` columns.
+    ///
+    /// Panics:  
+    /// Panics if one of these conditions is not satisfied:
+    ///  - `i < self.nrows()`,
+    ///  - `j < self.ncols()`,
+    ///  - `nrows < self.nrows() - i`,
+    ///  - `ncols < self.ncols() - j`.
+    pub fn submatrix(self, i: usize, j: usize, nrows: usize, ncols: usize) -> Self {
+        assert!(i < self.nrows());
+        assert!(j < self.ncols());
+        assert!(nrows < self.nrows() - i);
+        assert!(ncols < self.ncols() - j);
+
+        unsafe { self.submatrix_unchecked(i, j, nrows, ncols) }
+    }
+
+    /// Returns the submatrix starting at `(i, j)`, with `nrows` rows and `ncols` columns,
+    /// without bound checks.
+    ///
+    /// Safety:  
+    /// The behavior is undefined if one of these conditions is not satisfied:
+    ///  - `i < self.nrows()`,
+    ///  - `j < self.ncols()`,
+    ///  - `nrows < self.nrows() - i`,
+    ///  - `ncols < self.ncols() - j`.
+    pub unsafe fn submatrix_unchecked(
+        self,
+        i: usize,
+        j: usize,
+        nrows: usize,
+        ncols: usize,
+    ) -> Self {
+        debug_assert!(i < self.nrows());
+        debug_assert!(j < self.ncols());
+        debug_assert!(nrows < self.nrows() - i);
+        debug_assert!(ncols < self.ncols() - j);
+
+        Self::from_raw_parts(
+            self.element_ptr(i, j),
+            nrows,
+            ncols,
+            self.row_stride(),
+            self.col_stride(),
+        )
+    }
+
+    /// Returns a reference to the element at position `(i, j)`,
+    /// assuming that `i < self.nrows()` and `j < self.ncols()`.  
+    ///
+    /// Panics:  
+    /// Panics if one of these conditions is not satisfied:
+    ///  - `i < self.nrows()`,
+    ///  - `j < self.ncols()`,
+    pub fn get(self, i: usize, j: usize) -> &'a T {
+        unsafe { &*self.element_ptr_inbounds(i, j) }
+    }
+
+    /// Returns a reference to the element at position `(i, j)`,
+    /// assuming that `i < self.nrows()` and `j < self.ncols()`.
+    ///
+    /// Safety:  
+    /// The behavior is undefined if one these conditions is not satisfied:
+    ///  - `i < self.nrows()`,
+    ///  - `j < self.ncols()`.
+    pub unsafe fn get_unchecked(self, i: usize, j: usize) -> &'a T {
+        &*self.element_ptr_inbounds_unchecked(i, j)
+    }
+
+    /// Returns a raw pointer to the element at position `(i, j)`.
+    pub fn element_ptr(self, i: usize, j: usize) -> *const T {
+        self.inner
+            .buf
+            .wrapping_offset(offset(i, j, self.inner.rs, self.inner.cs))
+    }
+
+    /// Returns a raw pointer to the element at position `(i, j)`,
+    /// assuming that `i < self.nrows()` and `j < self.ncols()`.
+    ///
+    /// Panics:  
+    /// Panics if one these conditions is not satisfied:
+    ///  - `i < self.nrows()`,
+    ///  - `j < self.ncols()`.
+    pub fn element_ptr_inbounds(self, i: usize, j: usize) -> *const T {
+        assert!(i < self.nrows());
+        assert!(j < self.ncols());
+        unsafe { self.element_ptr_inbounds_unchecked(i, j) }
+    }
+
+    /// Returns a raw pointer to the element at position `(i, j)`,
+    /// assuming that `i < self.nrows()` and `j < self.ncols()`.
+    ///
+    /// Safety:  
+    /// The behavior is undefined if one these conditions is not satisfied:
+    ///  - `i < self.nrows()`,
+    ///  - `j < self.ncols()`.
+    pub unsafe fn element_ptr_inbounds_unchecked(self, i: usize, j: usize) -> *const T {
+        self.inner
+            .buf
+            .offset(offset_inbounds(i, j, self.inner.rs, self.inner.cs))
+    }
 }
 
 impl<'a, T> MatrixMut<'a, T> {
-    /// Returns a mutable view from a pointer to the first element,
-    /// the matrix dimensions and its strides.
-    pub unsafe fn from_raw_parts_mut(
-        buf: NonNull<T>,
-        nrows: usize,
-        ncols: usize,
-        row_stride: isize,
-        col_stride: isize,
-    ) -> Self {
-        Self {
-            inner: Inner {
-                buf,
-                nrows,
-                ncols,
-                rs: row_stride,
-                cs: col_stride,
-            },
-            _marker: PhantomData,
-        }
-    }
-
-    /// Returns a view with 0 rows.
-    pub fn new_0xn(ncols: usize) -> Self {
-        unsafe { Self::from_raw_parts_mut(NonNull::<T>::dangling(), 0, ncols, 0, 0) }
-    }
-
-    /// Returns a view with 0 columns.
-    pub fn new_mx0(nrows: usize) -> Self {
-        unsafe { Self::from_raw_parts_mut(NonNull::<T>::dangling(), nrows, 0, 0, 0) }
-    }
-
-    /// Returns a view with 0 rows and 0 columns.
-    pub fn new_0x0() -> Self {
-        Self::new_mx0(0)
-    }
-
-    /// Returns a mutable view that refers to a single element.
-    pub fn new_1x1(value: &'a mut T) -> Self {
-        unsafe { Self::from_raw_parts_mut(NonNull::<T>::new_unchecked(value), 1, 1, 0, 0) }
-    }
-
     /// Returns a mutable view from a mutable slice, the matrix dimensions and its strides.
     pub fn try_from_mut_slice(
         buf: &'a mut [T],
@@ -234,7 +317,7 @@ impl<'a, T> MatrixMut<'a, T> {
         unsafe {
             if nrows == 0 || ncols == 0 {
                 Ok(Self::from_raw_parts_mut(
-                    NonNull::new_unchecked(buf.as_mut_ptr()),
+                    buf.as_mut_ptr(),
                     nrows,
                     ncols,
                     0,
@@ -278,7 +361,7 @@ impl<'a, T> MatrixMut<'a, T> {
                 }
                 if rs == 0 || cs == 0 {
                     return Ok(Self::from_raw_parts_mut(
-                        NonNull::new_unchecked(buf.as_mut_ptr()),
+                        buf.as_mut_ptr(),
                         nrows,
                         ncols,
                         rs as isize,
@@ -294,7 +377,7 @@ impl<'a, T> MatrixMut<'a, T> {
                 }
 
                 Ok(Self::from_raw_parts_mut(
-                    NonNull::new_unchecked(buf.as_mut_ptr()),
+                    buf.as_mut_ptr(),
                     nrows,
                     ncols,
                     rs as isize,
@@ -304,16 +387,65 @@ impl<'a, T> MatrixMut<'a, T> {
         }
     }
 
+    /// Returns a mutable view from a pointer to the first element,
+    /// the matrix dimensions and its strides.
+    pub unsafe fn from_raw_parts_mut(
+        buf: *mut T,
+        nrows: usize,
+        ncols: usize,
+        row_stride: isize,
+        col_stride: isize,
+    ) -> Self {
+        Self {
+            inner: Inner {
+                buf,
+                nrows,
+                ncols,
+                rs: row_stride,
+                cs: col_stride,
+            },
+            _marker: PhantomData,
+        }
+    }
+
+    /// Returns a view with 0 rows.
+    pub fn new_0xn(ncols: usize) -> Self {
+        unsafe { Self::from_raw_parts_mut(core::ptr::null_mut(), 0, ncols, 0, 0) }
+    }
+
+    /// Returns a view with 0 columns.
+    pub fn new_mx0(nrows: usize) -> Self {
+        unsafe { Self::from_raw_parts_mut(core::ptr::null_mut(), nrows, 0, 0, 0) }
+    }
+
+    /// Returns a view with 0 rows and 0 columns.
+    pub fn new_0x0() -> Self {
+        Self::new_mx0(0)
+    }
+
+    /// Returns a mutable view that refers to a single element.
+    pub fn new_1x1(value: &'a mut T) -> Self {
+        unsafe { Self::from_raw_parts_mut(value, 1, 1, 0, 0) }
+    }
+
     /// Returns a mutable view over the transpose of `self`.
     pub fn trans(self) -> Self {
         unsafe {
             Self::from_raw_parts_mut(
-                self.inner.buf,
+                self.inner.buf as *mut T,
                 self.inner.ncols,
                 self.inner.nrows,
                 self.inner.cs,
                 self.inner.rs,
             )
+        }
+    }
+
+    /// Returns an immutable view over the same matrix.
+    pub fn as_const(self) -> MatrixRef<'a, T> {
+        MatrixRef::<'a, T> {
+            inner: self.inner,
+            _marker: PhantomData,
         }
     }
 
@@ -335,6 +467,155 @@ impl<'a, T> MatrixMut<'a, T> {
     /// Returns the stride between consecutive columns in the matrix.
     pub fn col_stride(&self) -> isize {
         self.inner.cs
+    }
+
+    /// Returns the submatrix starting at `(i, j)`, with `nrows` rows and `ncols` columns.
+    ///
+    /// Panics:  
+    /// Panics if one of these conditions is not satisfied:
+    ///  - `i < self.nrows()`,
+    ///  - `j < self.ncols()`,
+    ///  - `nrows < self.nrows() - i`,
+    ///  - `ncols < self.ncols() - j`.
+    pub fn submatrix(self, i: usize, j: usize, nrows: usize, ncols: usize) -> Self {
+        assert!(i < self.nrows());
+        assert!(j < self.ncols());
+        assert!(nrows < self.nrows() - i);
+        assert!(ncols < self.ncols() - j);
+
+        unsafe { self.submatrix_unchecked(i, j, nrows, ncols) }
+    }
+
+    /// Returns the submatrix starting at `(i, j)`, with `nrows` rows and `ncols` columns,
+    /// without bound checks.
+    ///
+    /// Safety:  
+    /// The behavior is undefined if one of these conditions is not satisfied:
+    ///  - `i < self.nrows()`,
+    ///  - `j < self.ncols()`,
+    ///  - `nrows < self.nrows() - i`,
+    ///  - `ncols < self.ncols() - j`.
+    pub unsafe fn submatrix_unchecked(
+        self,
+        i: usize,
+        j: usize,
+        nrows: usize,
+        ncols: usize,
+    ) -> Self {
+        debug_assert!(i < self.nrows());
+        debug_assert!(j < self.ncols());
+        debug_assert!(nrows < self.nrows() - i);
+        debug_assert!(ncols < self.ncols() - j);
+
+        let rs = self.row_stride();
+        let cs = self.col_stride();
+
+        Self::from_raw_parts_mut(self.element_mut_ptr(i, j), nrows, ncols, rs, cs)
+    }
+
+    /// Returns a reference to the element at position `(i, j)`,
+    /// assuming that `i < self.nrows()` and `j < self.ncols()`.  
+    ///
+    /// Panics:  
+    /// Panics if one of these conditions is not satisfied:
+    ///  - `i < self.nrows()`,
+    ///  - `j < self.ncols()`,
+    pub fn get(self, i: usize, j: usize) -> &'a T {
+        unsafe { &*self.element_ptr_inbounds(i, j) }
+    }
+
+    /// Returns a mutable reference to the element at position `(i, j)`,
+    /// assuming that `i < self.nrows()` and `j < self.ncols()`.  
+    ///
+    /// Panics:  
+    /// Panics if one of these conditions is not satisfied:
+    ///  - `i < self.nrows()`,
+    ///  - `j < self.ncols()`,
+    pub fn get_mut(self, i: usize, j: usize) -> &'a mut T {
+        unsafe { &mut *self.element_mut_ptr_inbounds(i, j) }
+    }
+
+    /// Returns a reference to the element at position `(i, j)`,
+    /// assuming that `i < self.nrows()` and `j < self.ncols()`.
+    ///
+    /// Safety:  
+    /// The behavior is undefined if one these conditions is not satisfied:
+    ///  - `i < self.nrows()`,
+    ///  - `j < self.ncols()`.
+    pub fn get_unchecked(self, i: usize, j: usize) -> &'a T {
+        unsafe { &*self.element_ptr_inbounds_unchecked(i, j) }
+    }
+
+    /// Returns a mutable reference to the element at position `(i, j)`,
+    /// assuming that `i < self.nrows()` and `j < self.ncols()`.
+    ///
+    /// Safety:  
+    /// The behavior is undefined if one these conditions is not satisfied:
+    ///  - `i < self.nrows()`,
+    ///  - `j < self.ncols()`.
+    pub fn get_mut_unchecked(self, i: usize, j: usize) -> &'a mut T {
+        unsafe { &mut *self.element_mut_ptr_inbounds_unchecked(i, j) }
+    }
+
+    /// Returns a raw pointer to the element at position `(i, j)`.
+    pub fn element_ptr(self, i: usize, j: usize) -> *const T {
+        self.rb().element_ptr(i, j)
+    }
+
+    /// Returns a raw mutable pointer to the element at position `(i, j)`.
+    ///
+    /// Panics:  
+    /// Panics if one these conditions is not satisfied:
+    ///  - `i < self.nrows()`,
+    ///  - `j < self.ncols()`.
+    pub fn element_mut_ptr(self, i: usize, j: usize) -> *mut T {
+        self.rb().element_ptr(i, j) as *mut T
+    }
+
+    /// Returns a raw pointer to the element at position `(i, j)`.
+    ///
+    /// Panics:  
+    /// Panics if one these conditions is not satisfied:
+    ///  - `i < self.nrows()`,
+    ///  - `j < self.ncols()`.
+    pub fn element_ptr_inbounds(self, i: usize, j: usize) -> *const T {
+        assert!(i < self.nrows());
+        assert!(j < self.ncols());
+        unsafe { self.element_ptr_inbounds_unchecked(i, j) }
+    }
+
+    /// Returns a raw mutable pointer to the element at position `(i, j)`.
+    ///
+    /// Panics:  
+    /// Panics if one these conditions is not satisfied:
+    ///  - `i < self.nrows()`,
+    ///  - `j < self.ncols()`.
+    pub fn element_mut_ptr_inbounds(self, i: usize, j: usize) -> *mut T {
+        assert!(i < self.nrows());
+        assert!(j < self.ncols());
+        unsafe { self.element_mut_ptr_inbounds_unchecked(i, j) }
+    }
+
+    /// Returns a raw pointer to the element at position `(i, j)`,
+    /// assuming that `i < self.nrows()` and `j < self.ncols()`.
+    ///
+    /// Safety:  
+    /// The behavior is undefined if one these conditions is not satisfied:
+    ///  - `i < self.nrows()`,
+    ///  - `j < self.ncols()`.
+    pub unsafe fn element_ptr_inbounds_unchecked(self, i: usize, j: usize) -> *const T {
+        self.rb().element_ptr_inbounds_unchecked(i, j)
+    }
+
+    /// Returns a raw mutable pointer to the element at position `(i, j)`,
+    /// assuming that `i < self.nrows()` and `j < self.ncols()`.
+    ///
+    /// Safety:  
+    /// The behavior is undefined if one these conditions is not satisfied:
+    ///  - `i < self.nrows()`,
+    ///  - `j < self.ncols()`.
+    pub unsafe fn element_mut_ptr_inbounds_unchecked(self, i: usize, j: usize) -> *mut T {
+        (self.inner.buf as *mut T).offset(offset_inbounds(i, j, self.inner.rs, self.inner.cs))
     }
 }
 
@@ -388,7 +669,7 @@ macro_rules! matrix_to_obj {
             );
             (*$name).rs = _input.inner.rs.try_into().unwrap();
             (*$name).cs = _input.inner.cs.try_into().unwrap();
-            (*$name).buffer = _input.inner.buf.as_ptr() as *mut ::std::os::raw::c_void;
+            (*$name).buffer = _input.inner.buf as *mut $dt as *mut _;
         }
     };
 }
@@ -1071,7 +1352,7 @@ pub enum DimsError {
 pub enum DimsErrorMut {
     /// Dimension error.
     DimsError(DimsError),
-    /// The address at some (i, j) aliases the address at (0, 0).
+    /// The address at some `(i, j)` aliases the address at `(0, 0)`.
     /// This variant contains the indices `i` and `j`.
     SelfAlias(usize, usize),
 }
@@ -1466,7 +1747,4 @@ mod tests {
     impl_trmm_right_test!(trmmr_f64, f64);
     impl_trmm_right_unit_diag_test!(trmmru_f32, f32);
     impl_trmm_right_unit_diag_test!(trmmru_f64, f64);
-
-    // TODO
-    // trsm tests
 }
