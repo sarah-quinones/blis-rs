@@ -33,7 +33,9 @@ impl<'a, T> Clone for MatrixRef<'a, T> {
     }
 }
 
-impl<'a, T> Copy for MatrixRef<'a, T> {}
+impl<'a, T> core::marker::Copy for MatrixRef<'a, T> {}
+unsafe impl<T> core::marker::Send for Inner<T> {}
+unsafe impl<T> core::marker::Sync for Inner<T> {}
 
 /// Mutable strided view over a matrix.
 pub struct MatrixMut<'a, T> {
