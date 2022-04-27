@@ -804,6 +804,11 @@ macro_rules! set_diag {
     };
 }
 
+pub enum UpLo {
+    Upper,
+    Lower,
+}
+
 pub trait Blis: Sized {
     /// If `beta == 0.0`, performs the operation
     /// `dst := alpha * lhs * rhs`.  
@@ -818,9 +823,9 @@ pub trait Blis: Sized {
         num_threads: usize,
     );
 
-    /// This operation is similar to `gemm`, but only the lower triangular part is updated.
+    /// This operation is similar to `gemm`, but only the upper/lower triangular part is updated.
     ///
-    /// Let `actual_dst` be the lower triangular part of `dst`.  
+    /// Let `actual_dst` be the upper/lower triangular part of `dst`, as specified by `uplo`.  
     /// If `beta == 0.0`, performs the operation
     /// `actual_dst := alpha * lhs * rhs`.  
     /// Otherwise, performs the operation
@@ -831,12 +836,13 @@ pub trait Blis: Sized {
         rhs: MatrixRef<'a, Self>,
         alpha: Self,
         beta: Self,
+        uplo: UpLo,
         num_threads: usize,
     );
 
     /// Performs a triangular matrix product accumulate operation.
     ///
-    /// Let `actual_lhs` be the lower triangular part of `lhs`.  
+    /// Let `actual_lhs` be the upper/lower triangular part of `lhs`, as specified by `uplo`.  
     /// If `beta == 0.0`, performs the operation  
     /// `dst := alpha * actual_lhs * rhs`.  
     /// Otherwise, performs the operation
@@ -847,12 +853,13 @@ pub trait Blis: Sized {
         rhs: MatrixRef<'a, Self>,
         alpha: Self,
         beta: Self,
+        uplo: UpLo,
         num_threads: usize,
     );
 
     /// Performs a triangular matrix product accumulate operation.
     ///
-    /// Let `actual_rhs` be the lower triangular part of `rhs`.  
+    /// Let `actual_rhs` be the upper/lower triangular part of `rhs`, as specified by `uplo`.  
     /// If `beta == 0.0`, performs the operation  
     /// `dst := alpha * lhs * actual_rhs`.  
     /// Otherwise, performs the operation
@@ -863,12 +870,14 @@ pub trait Blis: Sized {
         rhs: MatrixRef<'a, Self>,
         alpha: Self,
         beta: Self,
+        uplo: UpLo,
         num_threads: usize,
     );
 
     /// Performs a triangular matrix product accumulate operation, assuming unit diagonal.
     ///
-    /// Let `actual_lhs` be the lower triangular part of `lhs`, with an implicit unit diagonal.  
+    /// Let `actual_lhs` be the upper/lower triangular part of `lhs`, as specified by `uplo`,
+    /// with an implicit unit diagonal.  
     /// If `beta == 0.0`, performs the operation  
     /// `dst := alpha * actual_lhs * rhs`.  
     /// Otherwise, performs the operation
@@ -879,12 +888,14 @@ pub trait Blis: Sized {
         rhs: MatrixRef<'a, Self>,
         alpha: Self,
         beta: Self,
+        uplo: UpLo,
         num_threads: usize,
     );
 
     /// Performs a triangular matrix product accumulate operation.
     ///
-    /// Let `actual_rhs` be the lower triangular part of `rhs`, with an implicit unit diagonal.  
+    /// Let `actual_rhs` be the upper/lower triangular part of `rhs`, as specified by `uplo`.
+    /// with an implicit unit diagonal.  
     /// If `beta == 0.0`, performs the operation  
     /// `dst := alpha * lhs * actual_rhs`.  
     /// Otherwise, performs the operation
@@ -895,60 +906,67 @@ pub trait Blis: Sized {
         rhs: MatrixRef<'a, Self>,
         alpha: Self,
         beta: Self,
+        uplo: UpLo,
         num_threads: usize,
     );
 
     /// Performs an in-place triangular matrix product operation.
     ///
-    /// Let `actual_lhs` be the lower triangular part of `lhs`.  
+    /// Let `actual_lhs` be the upper/lower triangular part of `lhs`, as specified by `uplo`.  
     /// Performs the operation
     /// `dst := alpha * actual_lhs * dst`.
     fn trmm_left<'a>(
         dst: MatrixMut<'a, Self>,
         lhs: MatrixRef<'a, Self>,
         alpha: Self,
+        uplo: UpLo,
         num_threads: usize,
     );
 
     /// Performs an in-place triangular matrix product operation.
     ///
-    /// Let `actual_rhs` be the lower triangular part of `rhs`.  
+    /// Let `actual_rhs` be the upper/lower triangular part of `rhs`, as specified by `uplo`.  
     /// Performs the operation  
     /// `dst := alpha * dst * actual_rhs`.  
     fn trmm_right<'a>(
         dst: MatrixMut<'a, Self>,
         rhs: MatrixRef<'a, Self>,
         alpha: Self,
+        uplo: UpLo,
         num_threads: usize,
     );
 
     /// Performs an in-place triangular matrix product operation, with unit diagonal.
     ///
-    /// Let `actual_lhs` be the lower triangular part of `lhs`, with an implicit unit diagonal.  
+    /// Let `actual_lhs` be the upper/lower triangular part of `lhs`, as specified by `uplo`,  
+    /// with an implicit unit diagonal.  
     /// Performs the operation
     /// `dst := alpha * actual_lhs * dst`.
     fn trmm_left_unit_diag<'a>(
         dst: MatrixMut<'a, Self>,
         lhs: MatrixRef<'a, Self>,
         alpha: Self,
+        uplo: UpLo,
         num_threads: usize,
     );
 
     /// Performs an in-place triangular matrix product operation, with unit diagonal.
     ///
-    /// Let `actual_rhs` be the lower triangular part of `rhs`, with an implicit unit diagonal.  
+    /// Let `actual_rhs` be the upper/lower triangular part of `rhs`, as specified by `uplo`,  
+    /// with an implicit unit diagonal.  
     /// Performs the operation  
     /// `dst := alpha * dst * actual_rhs`.  
     fn trmm_right_unit_diag<'a>(
         dst: MatrixMut<'a, Self>,
         rhs: MatrixRef<'a, Self>,
         alpha: Self,
+        uplo: UpLo,
         num_threads: usize,
     );
 
     /// Solves a triangular system in-place.
     ///
-    /// Let `actual_lhs` be the lower triangular part of `lhs`.  
+    /// Let `actual_lhs` be the upper/lower triangular part of `lhs`, as specified by `uplo`.
     /// Solves the equation
     /// `actual_lhs * X := alpha * dst`,  
     /// and stores the result in `dst`.
@@ -956,12 +974,13 @@ pub trait Blis: Sized {
         dst: MatrixMut<'a, Self>,
         lhs: MatrixRef<'a, Self>,
         alpha: Self,
+        uplo: UpLo,
         num_threads: usize,
     );
 
     /// Solves a triangular system in-place.
     ///
-    /// Let `actual_rhs` be the lower triangular part of `rhs`.  
+    /// Let `actual_rhs` be the upper/lower triangular part of `rhs`, as specified by `uplo`.  
     /// Solves the equation
     /// `X * actual_rhs := alpha * dst`,  
     /// and stores the result in `dst`.
@@ -969,12 +988,14 @@ pub trait Blis: Sized {
         dst: MatrixMut<'a, Self>,
         rhs: MatrixRef<'a, Self>,
         alpha: Self,
+        uplo: UpLo,
         num_threads: usize,
     );
 
     /// Solves a triangular system in-place, with unit diagonal.
     ///
-    /// Let `actual_lhs` be the lower triangular part of `lhs`, with an implicit unit diagonal.  
+    /// Let `actual_lhs` be the upper/lower triangular part of `lhs`, as specified by `uplo`,  
+    /// with an implicit unit diagonal.  
     /// Solves the equation
     /// `actual_lhs * X := alpha * dst`,  
     /// and stores the result in `dst`.
@@ -982,12 +1003,14 @@ pub trait Blis: Sized {
         dst: MatrixMut<'a, Self>,
         lhs: MatrixRef<'a, Self>,
         alpha: Self,
+        uplo: UpLo,
         num_threads: usize,
     );
 
     /// Solves a triangular system in-place, with unit diagonal.
     ///
-    /// Let `actual_rhs` be the lower triangular part of `rhs`, with an implicit unit diagonal.  
+    /// Let `actual_rhs` be the upper/lower triangular part of `rhs`, as specified by `uplo`,  
+    /// with an implicit unit diagonal.  
     /// Solves the equation
     /// `X * actual_rhs := alpha * dst`,  
     /// and stores the result in `dst`.
@@ -995,6 +1018,7 @@ pub trait Blis: Sized {
         dst: MatrixMut<'a, Self>,
         rhs: MatrixRef<'a, Self>,
         alpha: Self,
+        uplo: UpLo,
         num_threads: usize,
     );
 }
@@ -1061,6 +1085,7 @@ macro_rules! impl_blis {
                 rhs: MatrixRef<'a, Self>,
                 alpha: Self,
                 beta: Self,
+                uplo: UpLo,
                 num_threads: usize,
             ) {
                 assert_eq!(
@@ -1076,7 +1101,13 @@ macro_rules! impl_blis {
                 matrix_to_obj!(obj_alpha, alpha, $ty);
                 matrix_to_obj!(obj_beta, beta, $ty);
 
-                set_uplo!(obj_dst, sys::uplo_t_BLIS_LOWER);
+                set_uplo!(
+                    obj_dst,
+                    match uplo {
+                        UpLo::Upper => sys::uplo_t_BLIS_UPPER,
+                        UpLo::Lower => sys::uplo_t_BLIS_LOWER,
+                    }
+                );
 
                 unsafe {
                     sys::bli_gemmt_ex(
@@ -1097,6 +1128,7 @@ macro_rules! impl_blis {
                 rhs: MatrixRef<'a, Self>,
                 alpha: Self,
                 beta: Self,
+                uplo: UpLo,
                 num_threads: usize,
             ) {
                 let alpha = MatrixRef::new_1x1(&alpha);
@@ -1108,7 +1140,13 @@ macro_rules! impl_blis {
                 matrix_to_obj!(obj_alpha, alpha, $ty);
                 matrix_to_obj!(obj_beta, beta, $ty);
 
-                set_uplo!(obj_lhs, sys::uplo_t_BLIS_LOWER);
+                set_uplo!(
+                    obj_lhs,
+                    match uplo {
+                        UpLo::Upper => sys::uplo_t_BLIS_UPPER,
+                        UpLo::Lower => sys::uplo_t_BLIS_LOWER,
+                    }
+                );
                 set_diag!(obj_lhs, sys::diag_t_BLIS_NONUNIT_DIAG);
                 set_struc!(obj_lhs, sys::struc_t_BLIS_TRIANGULAR);
 
@@ -1132,6 +1170,7 @@ macro_rules! impl_blis {
                 rhs: MatrixRef<'a, Self>,
                 alpha: Self,
                 beta: Self,
+                uplo: UpLo,
                 num_threads: usize,
             ) {
                 let alpha = MatrixRef::new_1x1(&alpha);
@@ -1143,7 +1182,13 @@ macro_rules! impl_blis {
                 matrix_to_obj!(obj_alpha, alpha, $ty);
                 matrix_to_obj!(obj_beta, beta, $ty);
 
-                set_uplo!(obj_rhs, sys::uplo_t_BLIS_LOWER);
+                set_uplo!(
+                    obj_rhs,
+                    match uplo {
+                        UpLo::Upper => sys::uplo_t_BLIS_UPPER,
+                        UpLo::Lower => sys::uplo_t_BLIS_LOWER,
+                    }
+                );
                 set_diag!(obj_rhs, sys::diag_t_BLIS_NONUNIT_DIAG);
                 set_struc!(obj_rhs, sys::struc_t_BLIS_TRIANGULAR);
 
@@ -1167,6 +1212,7 @@ macro_rules! impl_blis {
                 rhs: MatrixRef<'a, Self>,
                 alpha: Self,
                 beta: Self,
+                uplo: UpLo,
                 num_threads: usize,
             ) {
                 let alpha = MatrixRef::new_1x1(&alpha);
@@ -1178,7 +1224,13 @@ macro_rules! impl_blis {
                 matrix_to_obj!(obj_alpha, alpha, $ty);
                 matrix_to_obj!(obj_beta, beta, $ty);
 
-                set_uplo!(obj_lhs, sys::uplo_t_BLIS_LOWER);
+                set_uplo!(
+                    obj_lhs,
+                    match uplo {
+                        UpLo::Upper => sys::uplo_t_BLIS_UPPER,
+                        UpLo::Lower => sys::uplo_t_BLIS_LOWER,
+                    }
+                );
                 set_diag!(obj_lhs, sys::diag_t_BLIS_UNIT_DIAG);
                 set_struc!(obj_lhs, sys::struc_t_BLIS_TRIANGULAR);
 
@@ -1202,6 +1254,7 @@ macro_rules! impl_blis {
                 rhs: MatrixRef<'a, Self>,
                 alpha: Self,
                 beta: Self,
+                uplo: UpLo,
                 num_threads: usize,
             ) {
                 let alpha = MatrixRef::new_1x1(&alpha);
@@ -1213,7 +1266,13 @@ macro_rules! impl_blis {
                 matrix_to_obj!(obj_alpha, alpha, $ty);
                 matrix_to_obj!(obj_beta, beta, $ty);
 
-                set_uplo!(obj_rhs, sys::uplo_t_BLIS_LOWER);
+                set_uplo!(
+                    obj_rhs,
+                    match uplo {
+                        UpLo::Upper => sys::uplo_t_BLIS_UPPER,
+                        UpLo::Lower => sys::uplo_t_BLIS_LOWER,
+                    }
+                );
                 set_diag!(obj_rhs, sys::diag_t_BLIS_UNIT_DIAG);
                 set_struc!(obj_rhs, sys::struc_t_BLIS_TRIANGULAR);
 
@@ -1235,6 +1294,7 @@ macro_rules! impl_blis {
                 dst: MatrixMut<'a, Self>,
                 lhs: MatrixRef<'a, Self>,
                 alpha: Self,
+                uplo: UpLo,
                 num_threads: usize,
             ) {
                 let alpha = MatrixRef::new_1x1(&alpha);
@@ -1243,7 +1303,13 @@ macro_rules! impl_blis {
                 matrix_to_obj!(obj_lhs, lhs, $ty);
                 matrix_to_obj!(obj_alpha, alpha, $ty);
 
-                set_uplo!(obj_lhs, sys::uplo_t_BLIS_LOWER);
+                set_uplo!(
+                    obj_lhs,
+                    match uplo {
+                        UpLo::Upper => sys::uplo_t_BLIS_UPPER,
+                        UpLo::Lower => sys::uplo_t_BLIS_LOWER,
+                    }
+                );
                 set_diag!(obj_lhs, sys::diag_t_BLIS_NONUNIT_DIAG);
                 set_struc!(obj_lhs, sys::struc_t_BLIS_TRIANGULAR);
 
@@ -1263,6 +1329,7 @@ macro_rules! impl_blis {
                 dst: MatrixMut<'a, Self>,
                 rhs: MatrixRef<'a, Self>,
                 alpha: Self,
+                uplo: UpLo,
                 num_threads: usize,
             ) {
                 let alpha = MatrixRef::new_1x1(&alpha);
@@ -1271,7 +1338,13 @@ macro_rules! impl_blis {
                 matrix_to_obj!(obj_rhs, rhs, $ty);
                 matrix_to_obj!(obj_alpha, alpha, $ty);
 
-                set_uplo!(obj_rhs, sys::uplo_t_BLIS_LOWER);
+                set_uplo!(
+                    obj_rhs,
+                    match uplo {
+                        UpLo::Upper => sys::uplo_t_BLIS_UPPER,
+                        UpLo::Lower => sys::uplo_t_BLIS_LOWER,
+                    }
+                );
                 set_diag!(obj_rhs, sys::diag_t_BLIS_NONUNIT_DIAG);
                 set_struc!(obj_rhs, sys::struc_t_BLIS_TRIANGULAR);
 
@@ -1291,6 +1364,7 @@ macro_rules! impl_blis {
                 dst: MatrixMut<'a, Self>,
                 lhs: MatrixRef<'a, Self>,
                 alpha: Self,
+                uplo: UpLo,
                 num_threads: usize,
             ) {
                 let alpha = MatrixRef::new_1x1(&alpha);
@@ -1299,7 +1373,13 @@ macro_rules! impl_blis {
                 matrix_to_obj!(obj_lhs, lhs, $ty);
                 matrix_to_obj!(obj_alpha, alpha, $ty);
 
-                set_uplo!(obj_lhs, sys::uplo_t_BLIS_LOWER);
+                set_uplo!(
+                    obj_lhs,
+                    match uplo {
+                        UpLo::Upper => sys::uplo_t_BLIS_UPPER,
+                        UpLo::Lower => sys::uplo_t_BLIS_LOWER,
+                    }
+                );
                 set_diag!(obj_lhs, sys::diag_t_BLIS_UNIT_DIAG);
                 set_struc!(obj_lhs, sys::struc_t_BLIS_TRIANGULAR);
 
@@ -1319,6 +1399,7 @@ macro_rules! impl_blis {
                 dst: MatrixMut<'a, Self>,
                 rhs: MatrixRef<'a, Self>,
                 alpha: Self,
+                uplo: UpLo,
                 num_threads: usize,
             ) {
                 let alpha = MatrixRef::new_1x1(&alpha);
@@ -1327,7 +1408,13 @@ macro_rules! impl_blis {
                 matrix_to_obj!(obj_rhs, rhs, $ty);
                 matrix_to_obj!(obj_alpha, alpha, $ty);
 
-                set_uplo!(obj_rhs, sys::uplo_t_BLIS_LOWER);
+                set_uplo!(
+                    obj_rhs,
+                    match uplo {
+                        UpLo::Upper => sys::uplo_t_BLIS_UPPER,
+                        UpLo::Lower => sys::uplo_t_BLIS_LOWER,
+                    }
+                );
                 set_diag!(obj_rhs, sys::diag_t_BLIS_UNIT_DIAG);
                 set_struc!(obj_rhs, sys::struc_t_BLIS_TRIANGULAR);
 
@@ -1347,6 +1434,7 @@ macro_rules! impl_blis {
                 dst: MatrixMut<'a, Self>,
                 lhs: MatrixRef<'a, Self>,
                 alpha: Self,
+                uplo: UpLo,
                 num_threads: usize,
             ) {
                 let alpha = MatrixRef::new_1x1(&alpha);
@@ -1355,7 +1443,13 @@ macro_rules! impl_blis {
                 matrix_to_obj!(obj_lhs, lhs, $ty);
                 matrix_to_obj!(obj_alpha, alpha, $ty);
 
-                set_uplo!(obj_lhs, sys::uplo_t_BLIS_LOWER);
+                set_uplo!(
+                    obj_lhs,
+                    match uplo {
+                        UpLo::Upper => sys::uplo_t_BLIS_UPPER,
+                        UpLo::Lower => sys::uplo_t_BLIS_LOWER,
+                    }
+                );
                 set_diag!(obj_lhs, sys::diag_t_BLIS_NONUNIT_DIAG);
                 set_struc!(obj_lhs, sys::struc_t_BLIS_TRIANGULAR);
 
@@ -1375,6 +1469,7 @@ macro_rules! impl_blis {
                 dst: MatrixMut<'a, Self>,
                 rhs: MatrixRef<'a, Self>,
                 alpha: Self,
+                uplo: UpLo,
                 num_threads: usize,
             ) {
                 let alpha = MatrixRef::new_1x1(&alpha);
@@ -1383,7 +1478,13 @@ macro_rules! impl_blis {
                 matrix_to_obj!(obj_rhs, rhs, $ty);
                 matrix_to_obj!(obj_alpha, alpha, $ty);
 
-                set_uplo!(obj_rhs, sys::uplo_t_BLIS_LOWER);
+                set_uplo!(
+                    obj_rhs,
+                    match uplo {
+                        UpLo::Upper => sys::uplo_t_BLIS_UPPER,
+                        UpLo::Lower => sys::uplo_t_BLIS_LOWER,
+                    }
+                );
                 set_diag!(obj_rhs, sys::diag_t_BLIS_NONUNIT_DIAG);
                 set_struc!(obj_rhs, sys::struc_t_BLIS_TRIANGULAR);
 
@@ -1403,6 +1504,7 @@ macro_rules! impl_blis {
                 dst: MatrixMut<'a, Self>,
                 lhs: MatrixRef<'a, Self>,
                 alpha: Self,
+                uplo: UpLo,
                 num_threads: usize,
             ) {
                 let alpha = MatrixRef::new_1x1(&alpha);
@@ -1411,7 +1513,13 @@ macro_rules! impl_blis {
                 matrix_to_obj!(obj_lhs, lhs, $ty);
                 matrix_to_obj!(obj_alpha, alpha, $ty);
 
-                set_uplo!(obj_lhs, sys::uplo_t_BLIS_LOWER);
+                set_uplo!(
+                    obj_lhs,
+                    match uplo {
+                        UpLo::Upper => sys::uplo_t_BLIS_UPPER,
+                        UpLo::Lower => sys::uplo_t_BLIS_LOWER,
+                    }
+                );
                 set_diag!(obj_lhs, sys::diag_t_BLIS_UNIT_DIAG);
                 set_struc!(obj_lhs, sys::struc_t_BLIS_TRIANGULAR);
 
@@ -1431,6 +1539,7 @@ macro_rules! impl_blis {
                 dst: MatrixMut<'a, Self>,
                 rhs: MatrixRef<'a, Self>,
                 alpha: Self,
+                uplo: UpLo,
                 num_threads: usize,
             ) {
                 let alpha = MatrixRef::new_1x1(&alpha);
@@ -1439,7 +1548,13 @@ macro_rules! impl_blis {
                 matrix_to_obj!(obj_rhs, rhs, $ty);
                 matrix_to_obj!(obj_alpha, alpha, $ty);
 
-                set_uplo!(obj_rhs, sys::uplo_t_BLIS_LOWER);
+                set_uplo!(
+                    obj_rhs,
+                    match uplo {
+                        UpLo::Upper => sys::uplo_t_BLIS_UPPER,
+                        UpLo::Lower => sys::uplo_t_BLIS_LOWER,
+                    }
+                );
                 set_diag!(obj_rhs, sys::diag_t_BLIS_UNIT_DIAG);
                 set_struc!(obj_rhs, sys::struc_t_BLIS_TRIANGULAR);
 
@@ -1591,7 +1706,7 @@ mod tests {
                     let b = MatrixRef::try_from_slice(&b, 2, 2, 1, 2).unwrap();
                     let c0 = MatrixMut::try_from_mut_slice(&mut c0, 2, 2, 1, 2).unwrap();
 
-                    <$ty>::gemmt(c0, a, b, alpha, beta, 1);
+                    <$ty>::gemmt(c0, a, b, alpha, beta, UpLo::Lower, 1);
                 }
                 assert_eq!(
                     c0,
@@ -1626,7 +1741,7 @@ mod tests {
                     let b = MatrixRef::try_from_slice(&b, 2, 2, 1, 2).unwrap();
                     let c0 = MatrixMut::try_from_mut_slice(&mut c0, 2, 2, 1, 2).unwrap();
 
-                    <$ty>::trmm3_left(c0, a, b, alpha, beta, 1);
+                    <$ty>::trmm3_left(c0, a, b, alpha, beta, UpLo::Lower, 1);
                 }
                 assert_eq!(
                     c0,
@@ -1658,7 +1773,7 @@ mod tests {
                     let b = MatrixRef::try_from_slice(&b, 2, 2, 1, 2).unwrap();
                     let c0 = MatrixMut::try_from_mut_slice(&mut c0, 2, 2, 1, 2).unwrap();
 
-                    <$ty>::trmm3_left_unit_diag(c0, a, b, alpha, beta, 1);
+                    <$ty>::trmm3_left_unit_diag(c0, a, b, alpha, beta, UpLo::Lower, 1);
                 }
                 assert_eq!(
                     c0,
@@ -1690,7 +1805,7 @@ mod tests {
                     let b = MatrixRef::try_from_slice(&b, 2, 2, 1, 2).unwrap();
                     let c0 = MatrixMut::try_from_mut_slice(&mut c0, 2, 2, 1, 2).unwrap();
 
-                    <$ty>::trmm3_right(c0, a, b, alpha, beta, 1);
+                    <$ty>::trmm3_right(c0, a, b, alpha, beta, UpLo::Lower, 1);
                 }
                 assert_eq!(
                     c0,
@@ -1722,7 +1837,7 @@ mod tests {
                     let b = MatrixRef::try_from_slice(&b, 2, 2, 1, 2).unwrap();
                     let c0 = MatrixMut::try_from_mut_slice(&mut c0, 2, 2, 1, 2).unwrap();
 
-                    <$ty>::trmm3_right_unit_diag(c0, a, b, alpha, beta, 1);
+                    <$ty>::trmm3_right_unit_diag(c0, a, b, alpha, beta, UpLo::Lower, 1);
                 }
                 assert_eq!(
                     c0,
@@ -1760,7 +1875,7 @@ mod tests {
                     let a = MatrixRef::try_from_slice(&a, 2, 2, 1, 2).unwrap();
                     let c0 = MatrixMut::try_from_mut_slice(&mut c0, 2, 2, 1, 2).unwrap();
 
-                    <$ty>::trmm_left(c0, a, alpha, 1);
+                    <$ty>::trmm_left(c0, a, alpha, UpLo::Lower, 1);
                 }
                 assert_eq!(
                     c0,
@@ -1789,7 +1904,7 @@ mod tests {
                     let a = MatrixRef::try_from_slice(&a, 2, 2, 1, 2).unwrap();
                     let c0 = MatrixMut::try_from_mut_slice(&mut c0, 2, 2, 1, 2).unwrap();
 
-                    <$ty>::trmm_left_unit_diag(c0, a, alpha, 1);
+                    <$ty>::trmm_left_unit_diag(c0, a, alpha, UpLo::Lower, 1);
                 }
                 assert_eq!(
                     c0,
@@ -1818,7 +1933,7 @@ mod tests {
                     let b = MatrixRef::try_from_slice(&b, 2, 2, 1, 2).unwrap();
                     let c0 = MatrixMut::try_from_mut_slice(&mut c0, 2, 2, 1, 2).unwrap();
 
-                    <$ty>::trmm_right(c0, b, alpha, 1);
+                    <$ty>::trmm_right(c0, b, alpha, UpLo::Lower, 1);
                 }
                 assert_eq!(
                     c0,
@@ -1847,7 +1962,7 @@ mod tests {
                     let b = MatrixRef::try_from_slice(&b, 2, 2, 1, 2).unwrap();
                     let c0 = MatrixMut::try_from_mut_slice(&mut c0, 2, 2, 1, 2).unwrap();
 
-                    <$ty>::trmm_right_unit_diag(c0, b, alpha, 1);
+                    <$ty>::trmm_right_unit_diag(c0, b, alpha, UpLo::Lower, 1);
                 }
                 assert_eq!(
                     c0,
