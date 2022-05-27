@@ -1,6 +1,6 @@
 [package]
 name = "blis"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
 authors = ["sarah <>"]
 description = "Rust bindings for BLIS"
@@ -10,8 +10,8 @@ license = "MIT"
 keywords = ["linear-algebra"]
 
 [dependencies]
-blis-sys = "0.1.2"
-reborrow = "0.2.0"
+blis-sys = "0.3"
+reborrow = "0.2"
 
 [dev-dependencies]
 criterion = "0.3"

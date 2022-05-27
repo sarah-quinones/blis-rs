@@ -809,6 +809,7 @@ pub enum UpLo {
     Lower,
 }
 
+/// Interface for BLIS level 3 operations.
 pub trait Blis: Sized {
     /// If `beta == 0.0`, performs the operation
     /// `dst := alpha * lhs * rhs`.  
@@ -966,7 +967,7 @@ pub trait Blis: Sized {
 
     /// Solves a triangular system in-place.
     ///
-    /// Let `actual_lhs` be the upper/lower triangular part of `lhs`, as specified by `uplo`.
+    /// Let `actual_lhs` be the upper/lower triangular part of `lhs`, as specified by `uplo`.  
     /// Solves the equation
     /// `actual_lhs * X := alpha * dst`,  
     /// and stores the result in `dst`.
@@ -994,7 +995,7 @@ pub trait Blis: Sized {
 
     /// Solves a triangular system in-place, with unit diagonal.
     ///
-    /// Let `actual_lhs` be the upper/lower triangular part of `lhs`, as specified by `uplo`,  
+    /// Let `actual_lhs` be the upper/lower triangular part of `lhs`, as specified by `uplo`,
     /// with an implicit unit diagonal.  
     /// Solves the equation
     /// `actual_lhs * X := alpha * dst`,  
@@ -1034,17 +1035,11 @@ macro_rules! impl_blis {
                 beta: Self,
                 num_threads: usize,
             ) {
-                let mut dst = dst;
-                if lhs.nrows() == 1 && rhs.nrows() != 1 {
-                    return Self::gemm(
-                        dst.rb_mut().trans(),
-                        rhs.trans(),
-                        lhs.trans(),
-                        alpha,
-                        beta,
-                        num_threads,
-                    );
-                }
+                let (dst, lhs, rhs) = if lhs.nrows() == 1 && rhs.ncols() != 1 {
+                    (dst.trans(), rhs.trans(), lhs.trans())
+                } else {
+                    (dst, lhs, rhs)
+                };
                 let mat_alpha = MatrixRef::new_1x1(&alpha);
                 let mat_beta = MatrixRef::new_1x1(&beta);
 
@@ -1054,28 +1049,22 @@ macro_rules! impl_blis {
                 matrix_to_obj!(obj_alpha, mat_alpha, $ty);
                 matrix_to_obj!(obj_beta, mat_beta, $ty);
 
+                let f = if rhs.ncols() == 1 {
+                    sys::bli_gemv_ex
+                } else {
+                    sys::bli_gemm_ex
+                };
+
                 unsafe {
-                    if rhs.ncols() == 1 {
-                        sys::bli_gemv_ex(
-                            obj_alpha,
-                            obj_lhs,
-                            obj_rhs,
-                            obj_beta,
-                            obj_dst,
-                            core::ptr::null(),
-                            &mut to_rntm(num_threads),
-                        );
-                    } else {
-                        sys::bli_gemm_ex(
-                            obj_alpha,
-                            obj_lhs,
-                            obj_rhs,
-                            obj_beta,
-                            obj_dst,
-                            core::ptr::null(),
-                            &mut to_rntm(num_threads),
-                        );
-                    }
+                    f(
+                        obj_alpha,
+                        obj_lhs,
+                        obj_rhs,
+                        obj_beta,
+                        obj_dst,
+                        core::ptr::null_mut(),
+                        &mut to_rntm(num_threads),
+                    );
                 }
             }
 
@@ -1116,7 +1105,7 @@ macro_rules! impl_blis {
                         obj_rhs,
                         obj_beta,
                         obj_dst,
-                        core::ptr::null(),
+                        core::ptr::null_mut(),
                         &mut to_rntm(num_threads),
                     );
                 }
@@ -1158,7 +1147,7 @@ macro_rules! impl_blis {
                         obj_rhs,
                         obj_beta,
                         obj_dst,
-                        core::ptr::null(),
+                        core::ptr::null_mut(),
                         &mut to_rntm(num_threads),
                     );
                 }
@@ -1200,7 +1189,7 @@ macro_rules! impl_blis {
                         obj_lhs,
                         obj_beta,
                         obj_dst,
-                        core::ptr::null(),
+                        core::ptr::null_mut(),
                         &mut to_rntm(num_threads),
                     );
                 }
@@ -1242,7 +1231,7 @@ macro_rules! impl_blis {
                         obj_rhs,
                         obj_beta,
                         obj_dst,
-                        core::ptr::null(),
+                        core::ptr::null_mut(),
                         &mut to_rntm(num_threads),
                     );
                 }
@@ -1284,7 +1273,7 @@ macro_rules! impl_blis {
                         obj_lhs,
                         obj_beta,
                         obj_dst,
-                        core::ptr::null(),
+                        core::ptr::null_mut(),
                         &mut to_rntm(num_threads),
                     );
                 }
@@ -1298,6 +1287,7 @@ macro_rules! impl_blis {
                 num_threads: usize,
             ) {
                 let alpha = MatrixRef::new_1x1(&alpha);
+                let ncols = dst.ncols();
 
                 matrix_to_obj!(obj_dst, dst, $ty);
                 matrix_to_obj!(obj_lhs, lhs, $ty);
@@ -1314,14 +1304,24 @@ macro_rules! impl_blis {
                 set_struc!(obj_lhs, sys::struc_t_BLIS_TRIANGULAR);
 
                 unsafe {
-                    sys::bli_trmm_ex(
-                        sys::side_t_BLIS_LEFT,
-                        obj_alpha,
-                        obj_lhs,
-                        obj_dst,
-                        core::ptr::null(),
-                        &mut to_rntm(num_threads),
-                    );
+                    if ncols == 1 {
+                        sys::bli_trmv_ex(
+                            obj_alpha,
+                            obj_lhs,
+                            obj_dst,
+                            core::ptr::null_mut(),
+                            &mut to_rntm(num_threads),
+                        );
+                    } else {
+                        sys::bli_trmm_ex(
+                            sys::side_t_BLIS_LEFT,
+                            obj_alpha,
+                            obj_lhs,
+                            obj_dst,
+                            core::ptr::null_mut(),
+                            &mut to_rntm(num_threads),
+                        );
+                    }
                 }
             }
 
@@ -1354,7 +1354,7 @@ macro_rules! impl_blis {
                         obj_alpha,
                         obj_rhs,
                         obj_dst,
-                        core::ptr::null(),
+                        core::ptr::null_mut(),
                         &mut to_rntm(num_threads),
                     );
                 }
@@ -1368,6 +1368,7 @@ macro_rules! impl_blis {
                 num_threads: usize,
             ) {
                 let alpha = MatrixRef::new_1x1(&alpha);
+                let ncols = dst.ncols();
 
                 matrix_to_obj!(obj_dst, dst, $ty);
                 matrix_to_obj!(obj_lhs, lhs, $ty);
@@ -1384,14 +1385,24 @@ macro_rules! impl_blis {
                 set_struc!(obj_lhs, sys::struc_t_BLIS_TRIANGULAR);
 
                 unsafe {
-                    sys::bli_trmm_ex(
-                        sys::side_t_BLIS_LEFT,
-                        obj_alpha,
-                        obj_lhs,
-                        obj_dst,
-                        core::ptr::null(),
-                        &mut to_rntm(num_threads),
-                    );
+                    if ncols == 1 {
+                        sys::bli_trmv_ex(
+                            obj_alpha,
+                            obj_lhs,
+                            obj_dst,
+                            core::ptr::null_mut(),
+                            &mut to_rntm(num_threads),
+                        );
+                    } else {
+                        sys::bli_trmm_ex(
+                            sys::side_t_BLIS_LEFT,
+                            obj_alpha,
+                            obj_lhs,
+                            obj_dst,
+                            core::ptr::null_mut(),
+                            &mut to_rntm(num_threads),
+                        );
+                    }
                 }
             }
 
@@ -1424,7 +1435,7 @@ macro_rules! impl_blis {
                         obj_alpha,
                         obj_rhs,
                         obj_dst,
-                        core::ptr::null(),
+                        core::ptr::null_mut(),
                         &mut to_rntm(num_threads),
                     );
                 }
@@ -1438,6 +1449,7 @@ macro_rules! impl_blis {
                 num_threads: usize,
             ) {
                 let alpha = MatrixRef::new_1x1(&alpha);
+                let ncols = dst.ncols();
 
                 matrix_to_obj!(obj_dst, dst, $ty);
                 matrix_to_obj!(obj_lhs, lhs, $ty);
@@ -1454,14 +1466,24 @@ macro_rules! impl_blis {
                 set_struc!(obj_lhs, sys::struc_t_BLIS_TRIANGULAR);
 
                 unsafe {
-                    sys::bli_trsm_ex(
-                        sys::side_t_BLIS_LEFT,
-                        obj_alpha,
-                        obj_lhs,
-                        obj_dst,
-                        core::ptr::null(),
-                        &mut to_rntm(num_threads),
-                    );
+                    if ncols == 1 {
+                        sys::bli_trsv_ex(
+                            obj_alpha,
+                            obj_lhs,
+                            obj_dst,
+                            core::ptr::null_mut(),
+                            &mut to_rntm(num_threads),
+                        );
+                    } else {
+                        sys::bli_trsm_ex(
+                            sys::side_t_BLIS_LEFT,
+                            obj_alpha,
+                            obj_lhs,
+                            obj_dst,
+                            core::ptr::null_mut(),
+                            &mut to_rntm(num_threads),
+                        );
+                    }
                 }
             }
 
@@ -1494,7 +1516,7 @@ macro_rules! impl_blis {
                         obj_alpha,
                         obj_rhs,
                         obj_dst,
-                        core::ptr::null(),
+                        core::ptr::null_mut(),
                         &mut to_rntm(num_threads),
                     );
                 }
@@ -1508,6 +1530,7 @@ macro_rules! impl_blis {
                 num_threads: usize,
             ) {
                 let alpha = MatrixRef::new_1x1(&alpha);
+                let ncols = dst.ncols();
 
                 matrix_to_obj!(obj_dst, dst, $ty);
                 matrix_to_obj!(obj_lhs, lhs, $ty);
@@ -1524,14 +1547,24 @@ macro_rules! impl_blis {
                 set_struc!(obj_lhs, sys::struc_t_BLIS_TRIANGULAR);
 
                 unsafe {
-                    sys::bli_trsm_ex(
-                        sys::side_t_BLIS_LEFT,
-                        obj_alpha,
-                        obj_lhs,
-                        obj_dst,
-                        core::ptr::null(),
-                        &mut to_rntm(num_threads),
-                    );
+                    if ncols == 1 {
+                        sys::bli_trsv_ex(
+                            obj_alpha,
+                            obj_lhs,
+                            obj_dst,
+                            core::ptr::null_mut(),
+                            &mut to_rntm(num_threads),
+                        );
+                    } else {
+                        sys::bli_trsm_ex(
+                            sys::side_t_BLIS_LEFT,
+                            obj_alpha,
+                            obj_lhs,
+                            obj_dst,
+                            core::ptr::null_mut(),
+                            &mut to_rntm(num_threads),
+                        );
+                    }
                 }
             }
 
@@ -1564,7 +1597,7 @@ macro_rules! impl_blis {
                         obj_alpha,
                         obj_rhs,
                         obj_dst,
-                        core::ptr::null(),
+                        core::ptr::null_mut(),
                         &mut to_rntm(num_threads),
                     );
                 }
